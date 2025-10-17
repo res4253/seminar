@@ -1,0 +1,188 @@
+clear
+close all
+clc
+
+Path = ['/home/tanabe/code/t1dms_data/:',...
+    '/home/tanabe/code/t1dms_data/subjects/:',...
+    '/home/tanabe/code/t1dms_data/simu_data/:'];
+addpath(Path);
+
+
+%load data file
+subject_num = 3;
+seed = 1;
+
+if subject_num == 10
+    load(['t1dms_adult0',num2str(subject_num),'_seed',num2str(seed),'.mat'])
+else
+    load(['t1dms_adult00',num2str(subject_num),'_seed',num2str(seed),'.mat'])
+end
+
+load('temp.mat') %サンプリングデータのロード
+p = p_esti;
+
+%sampling time
+Ts =5;
+N = size(data_ssogmm.ts,2);
+N_step = 1:N;
+
+%data
+G = data.G.signals.values';
+R = G(1:Ts:end);
+
+Xs = data_ssogmm.xs;
+Y = G(data_ssogmm.ts);
+
+%%input
+u_m = data_ssogmm.meal;
+u_i = data_ssogmm.insulin;
+modes = data_ssogmm.modes;
+
+%Ra
+R_a = get_Ra(Xs(4,:),p,modes,N);
+
+U = [u_m;u_i;R_a;modes];
+
+
+%%
+
+
+
+%%ssogmm
+dic = dic_ssogmmCL(p,Ts,N,U);
+x = dic.dicrete(Xs,"ZOH");
+
+
+%kalman
+x_ini = x_esti(:,500);
+x_ini = x_ini([1 2  5 6 7]);
+
+% A = @(Ge,Xe) ...
+%     [1-Ts*(S_g+Xe), -Ts*Ge, 0, 0, 0;
+%     0, 1-Ts*p_2, 0, 0, (Ts*p_2*S_I)/(BW*V_I);
+%     0, 0, 1-Ts*k_d, 0, 0;
+%     0, 0, Ts*k_d, 1-Ts*k_d, 0;
+%     0, 0, 0, Ts*k_d, 1-Ts*k_cl
+%     ];
+A = dic.A;
+A_di = dic.A_di;
+A_dx = dic.A_dx;
+C = [1 0 0 0 0];
+
+xhat = zeros(5,N);
+
+Q = 1e-8; %システム雑音 2.2204e-16
+R = 1e-9; %観測雑音
+v = randn(1,N)*sqrtm(Q);
+w = randn(1,N)*sqrtm(R);
+
+% Y = Y-w;
+
+a = [1e6,1e6,1e6,1e6,1e6];
+P = diag(a);
+xhat(:,1) = x_ini;
+
+b = [1;0;0;0;0];
+B = [1,1,1,1,1];
+B_diag = diag(B);
+
+g_block = [];
+p_block1 = [];
+p_block2 = [];
+p_block3 = [];
+p_block4 = [];
+p_block5 = [];
+for k = 2:N
+
+     [A,xhatm] = dic.dynamics(xhat(:,k-1),k);
+     
+     A_tmp = [zeros(3,2) A_di];
+     A_temp =[A ; A_tmp];
+     % Pm = A(xhat(1,k-1),xhat(2,k-1))*P*A(xhat(1,k-1),xhat(2,k-1)) + b*Q*b';
+     Pm = A_temp*P*A_temp' + b*Q*B_diag';
+
+     g = Pm*C'/(C*Pm*C' + R);
+
+     xhat(:,k) = xhatm + g*(Y(:,k) - C*xhatm);
+     P = (eye(5) - g*C)*Pm;
+     g_block = [g_block,g];
+     p_block1 = [p_block1;P(1,1)];
+     p_block2 = [p_block2;P(2,2)];
+     p_block3 = [p_block3;P(3,3)];
+     p_block4 = [p_block4;P(4,4)];
+     p_block5 = [p_block5;P(5,5)];
+end
+
+
+% ssogmm = Xs([1 2 5 6 7],:);
+% for  i = 1:5
+%     figure
+%     plot(ssogmm(i,:))
+%     hold on
+%     plot(x(i,:));
+%     plot(xhat(i,:));
+%     legend('ssogmm','x','xaht')
+% end
+% 
+% error = ssogmm - xhat;
+% for i=1:5
+%     figure
+%     plot(error(i,:))
+% end
+
+% figure
+% plot(Y,'LineWidth',2)
+% hold on
+% plot(x(1,:),'.')
+% plot(xhat(1,:),'.')
+% legend('uva/padova','x','xhat')
+
+%rmse all
+Error_all = rmse(xhat(1,:)',Y');
+
+%rmse only 4day
+d = floor(size(N_step,2)/4)*3;
+Error_4day = rmse(xhat(1,d:end)',Y(:,d:end)');
+
+
+% dic_ssogmm5.x = x;
+% dic_ssogmm5.xhat = xhat;
+% dic_ssogmm5.rmseall = Error_all;
+% dic_ssogmm5.rmse4day = Error_4day;
+% 
+% 
+% save(['seed1_00',num2str(subject_num),'.mat'],"dic_ssogmm5","-append")
+
+ssogmm5 = data_ssogmm.xs([1 2 5 6 7],:);
+f=figure;
+f.Position = [70,65,1597,832];
+tiledlayout
+for i = 1:5
+    nexttile
+    plot(data_ssogmm.ts,ssogmm5(i,:))
+    hold on
+    plot(data_ssogmm.ts,xhat(i,:),'.')
+end
+
+
+f=figure;
+f.Position = [70,65,1597,832];
+tiledlayout
+for i = 1:5
+    nexttile
+    stairs(data_ssogmm.ts(1:end-1),g_block(i,:))
+end
+
+f=figure;
+f.Position = [70,65,1597,832];
+tiledlayout
+nexttile
+stairs(p_block1)
+nexttile
+stairs(p_block2)
+nexttile
+stairs(p_block3)
+nexttile
+stairs(p_block4)
+nexttile
+stairs(p_block5)
