@@ -71,19 +71,20 @@ C = [1 0 0 0 0];
 
 xhat = zeros(5,N);
 
-Q = 1e-8; %システム雑音 2.2204e-16
-R = 1e-9; %観測雑音
+Q = eps; %システム雑音 2.2204e-16
+R = eps; %観測雑音
 v = randn(1,N)*sqrtm(Q);
 w = randn(1,N)*sqrtm(R);
 
-% Y = Y-w;
+Y = Y-w;
 
-a = 100;%0~1000観測雑音が大きくSN比が悪い場合は小さく設定したほうがいい　という話
-P = a*eye(5);
+a = [1,1e-8,1e-6,1,1];
+P = diag(a);
+P = 100000*eye(5);
 xhat(:,1) = x_ini;
 
-b = [1;0;0;0;0];
-B = [1,1,1,1,1];
+b = eye(5);
+B = [1,1e-4,1,1,1];
 B_diag = diag(B);
 
 g_block = [];
@@ -99,7 +100,7 @@ for k = 2:N
      A_tmp = [zeros(3,2) A_di];
      A_temp =[A ; A_tmp];
      % Pm = A(xhat(1,k-1),xhat(2,k-1))*P*A(xhat(1,k-1),xhat(2,k-1)) + b*Q*b';
-     Pm = A_temp*P*A_temp' + b*Q*b';
+     Pm = A_temp*P*A_temp' + B_diag*Q*B_diag';
 
      g = Pm*C'/(C*Pm*C' + R);
 

@@ -179,7 +179,7 @@ classdef dic_ssogmmCL
             end
             A = @(Ge,Xe) ...
                 [1-self.Ts*(self.S_g+Xe), -self.Ts*Ge, 0, 0, (k_abs*self.f_c)/(self.BW*self.V_g);
-                0, 1-self.Ts*self.p_2, 0, 0, (self.Ts*self.p_2*self.S_I)
+                0, 1-self.Ts*self.p_2, 0, 0, (self.Ts*self.p_2*self.S_I)/(self.BW*self.V_I)
                 ];
 
             A_temp = A(x(1),x(2));
